@@ -137,6 +137,9 @@ class DrainTest(unittest.TestCase):
         self.base()
         permit.node(self.db,"a","rebuilt",2,"z1",4,4)
         self.assertEqual(evacuate.plan(self.db,"e","t","w"),"stale_source_node")
+        for kind in ("disk","network","runtime"):
+            restore.probe(self.db,kind,"a",2,kind,5,True)
+        self.assertEqual(restore.certify(self.db,"t",6),"stale_node_identity")
     def test_six_fixtures(self):
         root=pathlib.Path(__file__).resolve().parents[1]
         expected={"permit_normal":"approved","permit_failure":"protection_budget_exhausted","evacuate_normal":"moved","evacuate_failure":"local_volume_block","restore_normal":"closed","restore_failure":"orphan_quarantined"}

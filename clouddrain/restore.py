@@ -51,6 +51,7 @@ def certify(db,ticket_id,at):
         t=one(db,"SELECT * FROM tickets WHERE id=?",(ticket_id,))
         if not t or t["status"]!="approved":return "ticket_not_active"
         n=one(db,"SELECT * FROM nodes WHERE id=?",(t["node_id"],))
+        if not n or n["uid"]!=t["node_uid"]:return "stale_node_identity"
         inspect_result=inspect_status(db,ticket_id)
         if inspect_result=="stranded":return "stranded_workload"
         if inspect_result=="unregistered":return "orphan_unregistered"
