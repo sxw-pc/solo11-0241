@@ -132,6 +132,11 @@ class DrainTest(unittest.TestCase):
         self.assertEqual(evacuate.plan(self.db,"e","t","w"),"planned:b")
         self.assertEqual(evacuate.plan(self.db,"e","t","w"),"already_planned")
         self.assertEqual(evacuate.plan(self.db,"e","t","other"),"eviction_identity_conflict")
+
+    def test_node_rebuild_invalidates_approved_eviction_source(self):
+        self.base()
+        permit.node(self.db,"a","rebuilt",2,"z1",4,4)
+        self.assertEqual(evacuate.plan(self.db,"e","t","w"),"stale_source_node")
     def test_six_fixtures(self):
         root=pathlib.Path(__file__).resolve().parents[1]
         expected={"permit_normal":"approved","permit_failure":"protection_budget_exhausted","evacuate_normal":"moved","evacuate_failure":"local_volume_block","restore_normal":"closed","restore_failure":"orphan_quarantined"}

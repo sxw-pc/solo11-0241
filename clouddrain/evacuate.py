@@ -21,6 +21,9 @@ def plan(db,eviction_id,ticket_id,workload_id,allow_data_loss=False):
         w=one(db,"SELECT * FROM workloads WHERE id=?",(workload_id,))
         if not t or t["status"]!="approved" or not w or w["node_id"]!=t["node_id"]:
             return "not_eligible_ticket"
+        source=one(db,"SELECT * FROM nodes WHERE id=?",(t["node_id"],))
+        if not source or source["uid"]!=t["node_uid"]:
+            return "stale_source_node"
         if w["kind"]=="local":
             waiver=one(db,"SELECT * FROM data_loss_waiver WHERE ticket_id=? AND workload_id=?",(ticket_id,workload_id))
             if not allow_data_loss or not t["urgent"] or not waiver:
