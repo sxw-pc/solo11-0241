@@ -2,13 +2,21 @@ from .store import one,rows,tx
 
 def workload(db,workload_id,service,node_id,zone,cpu,mem,kind,version,generation,volume_id=None):
     with tx(db):
+        old=one(db,"SELECT * FROM workloads WHERE id=?",(workload_id,))
+        if old:
+            current=(old["service"],old["node_id"],old["cpu"],old["mem"],old["kind"],old["volume_id"],old["version"],old["generation"])
+            incoming=(service,node_id,cpu,mem,kind,volume_id,version,generation)
+            return "exists" if current==incoming else "workload_identity_conflict"
         db.execute("INSERT INTO workloads VALUES(?,?,?,?,?,?,?,?,?,?)",(workload_id,service,node_id,zone,cpu,mem,kind,volume_id,version,generation))
         if volume_id:
-            db.execute("INSERT OR IGNORE INTO volume(id,owner_node) VALUES(?,?)",(volume_id,node_id))
+            db.execute("INSERT OR IGNORE INTO volume(id,owner_node,generation) VALUES(?,?,?)",(volume_id,node_id,generation))
         return "registered"
 
 def plan(db,eviction_id,ticket_id,workload_id,allow_data_loss=False):
     with tx(db):
+        old=one(db,"SELECT * FROM eviction WHERE id=?",(eviction_id,))
+        if old:
+            return "already_planned" if old["ticket_id"]==ticket_id and old["workload_id"]==workload_id else "eviction_identity_conflict"
         t=one(db,"SELECT * FROM tickets WHERE id=?",(ticket_id,))
         w=one(db,"SELECT * FROM workloads WHERE id=?",(workload_id,))
         if not t or t["status"]!="approved" or not w or w["node_id"]!=t["node_id"]:
@@ -47,20 +55,42 @@ def receipt(db,receipt_id,eviction_id,target_uid,workload_generation,version):
             return "moved"
         return "waiting_volume_handoff"
 
-def volume_handoff(db,eviction_id,source_detached=False,target_barrier=False):
+def volume_receipt(db,receipt_id,eviction_id,kind,node_uid,volume_generation,workload_generation,at):
+    if kind not in ("source_detached","target_barrier"):return "unknown_receipt_kind"
+    with tx(db):
+        e=one(db,"SELECT * FROM eviction WHERE id=?",(eviction_id,))
+        if not e or e["status"]!="ready":return "target_not_ready"
+        w=one(db,"SELECT * FROM workloads WHERE id=?",(e["workload_id"],))
+        if not w["volume_id"]:return "no_volume"
+        v=one(db,"SELECT * FROM volume WHERE id=?",(w["volume_id"],))
+        expected_node=v["owner_node"] if kind=="source_detached" else e["target_id"]
+        n=one(db,"SELECT * FROM nodes WHERE id=?",(expected_node,))
+        if not n or node_uid!=n["uid"] or volume_generation!=v["generation"] or workload_generation!=w["generation"]:
+            return "stale_volume_receipt"
+        old=one(db,"SELECT * FROM volume_receipt WHERE id=?",(receipt_id,))
+        if old:
+            return "duplicate" if (old["volume_id"],old["kind"],old["node_uid"],old["at"])==(v["id"],kind,node_uid,at) else "receipt_identity_conflict"
+        db.execute("INSERT INTO volume_receipt VALUES(?,?,?,?,?,?,?)",(receipt_id,v["id"],kind,node_uid,volume_generation,workload_generation,at))
+        return "recorded"
+
+def volume_handoff(db,eviction_id):
     with tx(db):
         e=one(db,"SELECT * FROM eviction WHERE id=?",(eviction_id,))
         if not e:return "unknown_eviction"
+        if e["status"]=="moved":return "already_moved"
+        if e["status"]!="ready":return "target_not_ready"
         w=one(db,"SELECT * FROM workloads WHERE id=?",(e["workload_id"],))
         if not w["volume_id"]:return "no_volume"
-        if e["status"] not in ("ready","moved"):return "target_not_ready"
         v=one(db,"SELECT * FROM volume WHERE id=?",(w["volume_id"],))
-        detached=int(v["source_detached"] or source_detached)
-        barrier=int(v["target_barrier"] or target_barrier)
-        db.execute("UPDATE volume SET source_detached=?,target_barrier=? WHERE id=?",(detached,barrier,w["volume_id"]))
-        if not detached or not barrier:return "waiting_write_barrier"
+        source=one(db,"SELECT * FROM volume_receipt WHERE volume_id=? AND kind='source_detached' ORDER BY at DESC LIMIT 1",(v["id"],))
+        barrier=one(db,"SELECT * FROM volume_receipt WHERE volume_id=? AND kind='target_barrier' ORDER BY at DESC LIMIT 1",(v["id"],))
+        if not source or not barrier:return "waiting_write_barrier"
+        if barrier["at"]<source["at"]:return "barrier_before_detach"
+        source_node=one(db,"SELECT * FROM nodes WHERE id=?",(v["owner_node"],))
         n=one(db,"SELECT * FROM nodes WHERE id=?",(e["target_id"],))
-        db.execute("UPDATE volume SET owner_node=? WHERE id=?",(e["target_id"],w["volume_id"]))
+        if source["node_uid"]!=source_node["uid"] or barrier["node_uid"]!=n["uid"] or source["volume_generation"]!=v["generation"] or barrier["volume_generation"]!=v["generation"]:
+            return "stale_volume_receipt"
+        db.execute("UPDATE volume SET owner_node=?,generation=generation+1 WHERE id=?",(e["target_id"],w["volume_id"]))
         db.execute("UPDATE workloads SET node_id=?,zone=? WHERE id=?",(n["id"],n["zone"],w["id"]))
         db.execute("UPDATE eviction SET status='moved' WHERE id=?",(eviction_id,))
         return "write_owner_moved"

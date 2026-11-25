@@ -79,9 +79,14 @@ class DrainTest(unittest.TestCase):
         self.assertEqual(evacuate.plan(self.db,"e","t","w"),"planned:b")
         self.assertEqual(evacuate.receipt(self.db,"r","e","uid-b",1,"v1"),"waiting_volume_handoff")
         self.assertEqual(restore.inspect(self.db,"t"),"stranded:1")
-        self.assertEqual(evacuate.volume_handoff(self.db,"e",target_barrier=True),"waiting_write_barrier")
+        self.assertEqual(evacuate.volume_receipt(self.db,"bar","e","target_barrier","uid-b",1,1,5),"recorded")
+        self.assertEqual(evacuate.volume_handoff(self.db,"e"),"waiting_write_barrier")
         self.assertEqual(one(self.db,"SELECT owner_node FROM volume WHERE id='vol'")["owner_node"],"a")
-        self.assertEqual(evacuate.volume_handoff(self.db,"e",source_detached=True),"write_owner_moved")
+        self.assertEqual(evacuate.volume_receipt(self.db,"bad","e","source_detached","wrong-uid",1,1,4),"stale_volume_receipt")
+        self.assertEqual(evacuate.volume_receipt(self.db,"det","e","source_detached","uid-a",1,1,4),"recorded")
+        self.assertEqual(evacuate.volume_receipt(self.db,"det","e","source_detached","uid-a",1,1,4),"duplicate")
+        self.assertEqual(evacuate.volume_handoff(self.db,"e"),"write_owner_moved")
+        self.assertEqual(evacuate.volume_handoff(self.db,"e"),"already_moved")
         self.assertEqual(one(self.db,"SELECT owner_node FROM volume WHERE id='vol'")["owner_node"],"b")
         self.assertEqual(restore.inspect(self.db,"t"),"empty")
     def test_orphan_blocks_healthy_node(self):
@@ -120,6 +125,13 @@ class DrainTest(unittest.TestCase):
         self.assertEqual(evacuate.plan(self.db,"e","t","local",True),"local_volume_block")
         self.assertEqual(permit.waiver(self.db,"t","local","carol","loss accepted by tenant"),"recorded")
         self.assertEqual(evacuate.plan(self.db,"e","t","local",True),"planned:b")
+
+    def test_workload_and_eviction_replay_do_not_duplicate(self):
+        self.base()
+        self.assertEqual(evacuate.workload(self.db,"w","svc","a","z1",1,1,"stateless","v1",1),"exists")
+        self.assertEqual(evacuate.plan(self.db,"e","t","w"),"planned:b")
+        self.assertEqual(evacuate.plan(self.db,"e","t","w"),"already_planned")
+        self.assertEqual(evacuate.plan(self.db,"e","t","other"),"eviction_identity_conflict")
     def test_six_fixtures(self):
         root=pathlib.Path(__file__).resolve().parents[1]
         expected={"permit_normal":"approved","permit_failure":"protection_budget_exhausted","evacuate_normal":"moved","evacuate_failure":"local_volume_block","restore_normal":"closed","restore_failure":"orphan_quarantined"}

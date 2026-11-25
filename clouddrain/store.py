@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS data_loss_waiver(ticket_id TEXT NOT NULL,workload_id 
 CREATE TABLE IF NOT EXISTS workloads(id TEXT PRIMARY KEY,service TEXT NOT NULL,node_id TEXT NOT NULL,zone TEXT NOT NULL,cpu INTEGER NOT NULL,mem INTEGER NOT NULL,kind TEXT NOT NULL,volume_id TEXT,version TEXT NOT NULL,generation INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS eviction(id TEXT PRIMARY KEY,ticket_id TEXT NOT NULL,workload_id TEXT NOT NULL,target_id TEXT,status TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS target_receipt(id TEXT PRIMARY KEY,eviction_id TEXT NOT NULL,target_uid TEXT NOT NULL,workload_generation INTEGER NOT NULL,version TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS volume(id TEXT PRIMARY KEY,owner_node TEXT NOT NULL,target_node TEXT,source_detached INTEGER NOT NULL DEFAULT 0,target_barrier INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS volume(id TEXT PRIMARY KEY,owner_node TEXT NOT NULL,target_node TEXT,generation INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS volume_receipt(id TEXT PRIMARY KEY,volume_id TEXT NOT NULL,kind TEXT NOT NULL,node_uid TEXT NOT NULL,volume_generation INTEGER NOT NULL,workload_generation INTEGER NOT NULL,at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS probes(id TEXT PRIMARY KEY,node_id TEXT NOT NULL,generation INTEGER NOT NULL,kind TEXT NOT NULL,at INTEGER NOT NULL,healthy INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS snapshot(ticket_id TEXT NOT NULL,workload_id TEXT NOT NULL,PRIMARY KEY(ticket_id,workload_id));
 CREATE TABLE IF NOT EXISTS stranded(ticket_id TEXT NOT NULL,workload_id TEXT NOT NULL,PRIMARY KEY(ticket_id,workload_id));
@@ -20,7 +21,7 @@ CREATE TABLE IF NOT EXISTS ownership(workload_id TEXT PRIMARY KEY,tenant TEXT NO
 CREATE TABLE IF NOT EXISTS closure(ticket_id TEXT PRIMARY KEY,status TEXT NOT NULL,reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_log(seq INTEGER PRIMARY KEY AUTOINCREMENT,table_name TEXT NOT NULL,row_id INTEGER NOT NULL,action TEXT NOT NULL,payload TEXT);
 """
-BUSINESS_TABLES=["nodes","guard","tickets","approval","data_loss_waiver","workloads","eviction","target_receipt","volume","probes","snapshot","stranded","orphan","ownership","closure"]
+BUSINESS_TABLES=["nodes","guard","tickets","approval","data_loss_waiver","workloads","eviction","target_receipt","volume","volume_receipt","probes","snapshot","stranded","orphan","ownership","closure"]
 
 def open_db(path):
     db=sqlite3.connect(path,timeout=10)
