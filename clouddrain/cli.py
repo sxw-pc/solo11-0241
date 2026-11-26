@@ -1,12 +1,14 @@
 import argparse
 import json
 from pathlib import Path
-from . import permit,evacuate,restore
+from . import permit,evacuate,restore,witness_capture,audit_release
 from .store import open_db,report
 
 COMMANDS={f"permit.{n}":getattr(permit,n) for n in ["node","guard","approval","ticket","approve","waiver"]}
 COMMANDS.update({f"evacuate.{n}":getattr(evacuate,n) for n in ["workload","plan","receipt","volume_receipt","volume_handoff"]})
 COMMANDS.update({f"restore.{n}":getattr(restore,n) for n in ["probe","inspect","orphan","certify","ownership"]})
+COMMANDS.update({f"witness.{n}":getattr(witness_capture,n) for n in ["import_page","register_witness","revoke_signature"]})
+COMMANDS.update({f"audit.{n}":getattr(audit_release,n) for n in ["grant_authority","adjudicate","publish"]})
 
 def run(db_path,fixture,subsystem=None):
     db=open_db(db_path)
@@ -23,7 +25,7 @@ def run(db_path,fixture,subsystem=None):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument("subsystem",choices=["permit","evacuate","restore","all"])
+    parser.add_argument("subsystem",choices=["permit","evacuate","restore","witness","audit","all"])
     parser.add_argument("fixture")
     parser.add_argument("--db",default="clouddrain.sqlite")
     a=parser.parse_args()
