@@ -5,7 +5,7 @@ from . import permit,evacuate,restore
 from .store import open_db,report
 
 COMMANDS={f"permit.{n}":getattr(permit,n) for n in ["node","guard","approval","ticket","approve","waiver"]}
-COMMANDS.update({f"evacuate.{n}":getattr(evacuate,n) for n in ["workload","plan","receipt","volume_receipt","volume_handoff"]})
+COMMANDS.update({f"evacuate.{n}":getattr(evacuate,n) for n in ["workload","plan","receipt","release","retarget","relocate","relocation_receipt","abandon_relocation","volume_receipt","volume_handoff"]})
 COMMANDS.update({f"restore.{n}":getattr(restore,n) for n in ["probe","inspect","orphan","certify","ownership"]})
 
 def run(db_path,fixture,subsystem=None):

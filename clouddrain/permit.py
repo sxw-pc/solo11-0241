@@ -53,4 +53,11 @@ def approve(db,ticket_id,at):
         db.execute("UPDATE tickets SET status='approved' WHERE id=?",(ticket_id,))
         db.execute("UPDATE nodes SET schedulable=0 WHERE id=?",(t["node_id"],))
         db.execute("INSERT OR IGNORE INTO snapshot SELECT ?,id FROM workloads WHERE node_id=?",(ticket_id,t["node_id"]))
+        # Freeze the source identity that each snapshot workload may hand off.
+        # A later receipt is rejected unless the workload still matches this.
+        for w in rows(db,"SELECT * FROM workloads WHERE node_id=?",(n["id"],)):
+            db.execute("""INSERT OR IGNORE INTO source_binding
+                (ticket_id,workload_id,node_id,node_uid,workload_generation,version)
+                VALUES(?,?,?,?,?,?)""",
+                (ticket_id,w["id"],n["id"],n["uid"],w["generation"],w["version"]))
         return "approved"

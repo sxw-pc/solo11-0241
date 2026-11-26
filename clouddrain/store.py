@@ -19,9 +19,27 @@ CREATE TABLE IF NOT EXISTS stranded(ticket_id TEXT NOT NULL,workload_id TEXT NOT
 CREATE TABLE IF NOT EXISTS orphan(id TEXT PRIMARY KEY,ticket_id TEXT NOT NULL,workload_id TEXT NOT NULL,tenant TEXT,status TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS ownership(workload_id TEXT PRIMARY KEY,tenant TEXT NOT NULL,generation INTEGER NOT NULL,valid_until INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS closure(ticket_id TEXT PRIMARY KEY,status TEXT NOT NULL,reason TEXT NOT NULL);
+-- Source identity captured when a maintenance ticket is approved.  A receipt is
+-- only useful while the workload still matches this binding.
+CREATE TABLE IF NOT EXISTS source_binding(ticket_id TEXT NOT NULL,workload_id TEXT NOT NULL,node_id TEXT NOT NULL,node_uid TEXT NOT NULL,workload_generation INTEGER NOT NULL,version TEXT NOT NULL,PRIMARY KEY(ticket_id,workload_id));
+-- A target promise is the persistent reservation created by a plan.  Reserving
+-- and moving are two different decisions; the promise survives retries so a
+-- source workload never loses its service identity while a receipt is pending.
+CREATE TABLE IF NOT EXISTS target_promise(id TEXT PRIMARY KEY,owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,workload_id TEXT NOT NULL,target_id TEXT NOT NULL,target_uid TEXT NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,ended_at INTEGER,reason TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_promise_per_owner ON target_promise(owner_kind,owner_id) WHERE status='active';
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_promise_per_workload ON target_promise(workload_id) WHERE status='active';
+-- Every target confirmation attempt, including rejected ones, is retained.
+CREATE TABLE IF NOT EXISTS placement_attempt(id TEXT PRIMARY KEY,receipt_id TEXT,owner_kind TEXT NOT NULL,owner_id TEXT NOT NULL,target_id TEXT,target_uid TEXT,workload_generation INTEGER NOT NULL,version TEXT NOT NULL,at INTEGER NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS one_attempt_per_receipt ON placement_attempt(receipt_id,owner_kind,owner_id) WHERE receipt_id IS NOT NULL;
+-- A business-owned relocation of an already serving workload.  It is separate
+-- from maintenance evictions: it needs an ownership grant and never moves the
+-- workload before the new target returns a readiness receipt.
+CREATE TABLE IF NOT EXISTS relocation(id TEXT PRIMARY KEY,workload_id TEXT NOT NULL,source_id TEXT NOT NULL,source_uid TEXT NOT NULL,target_id TEXT NOT NULL,target_uid TEXT NOT NULL,owner_generation INTEGER NOT NULL,owner_valid_until INTEGER NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS relocation_receipt(id TEXT PRIMARY KEY,relocation_id TEXT NOT NULL,target_uid TEXT NOT NULL,workload_generation INTEGER NOT NULL,version TEXT NOT NULL,at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS relocation_attempt(id TEXT PRIMARY KEY,relocation_id TEXT NOT NULL,workload_id TEXT NOT NULL,target_id TEXT,result TEXT NOT NULL,at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_log(seq INTEGER PRIMARY KEY AUTOINCREMENT,table_name TEXT NOT NULL,row_id INTEGER NOT NULL,action TEXT NOT NULL,payload TEXT);
 """
-BUSINESS_TABLES=["nodes","guard","tickets","approval","data_loss_waiver","workloads","eviction","target_receipt","volume","volume_receipt","probes","snapshot","stranded","orphan","ownership","closure"]
+BUSINESS_TABLES=["nodes","guard","tickets","approval","data_loss_waiver","workloads","eviction","target_receipt","volume","volume_receipt","probes","snapshot","stranded","orphan","ownership","closure","source_binding","target_promise","placement_attempt","relocation","relocation_receipt","relocation_attempt"]
 
 def open_db(path):
     db=sqlite3.connect(path,timeout=10)
